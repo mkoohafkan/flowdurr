@@ -1,0 +1,28 @@
+## R
+
+setwd('C:\\Users\\Michael\\Dropbox\\SFPUC\\volume duration frequency\\CODE')
+
+source("get_forecast.r")
+source("get_waterdata.r")
+source("plot_traces.r")
+source("get_excprobabilities.r")
+source("generate_curves.r")
+
+package.skeleton('flowdurr')
+require(inlinedocs)
+package.skeleton.dx('./flowdurr')
+
+#### COPY DESCRIPTION FILE TO DIRECTORY flowdurr
+
+
+
+## CMD
+
+R CMD check flowdurr
+R CMD build flowdurr
+
+R CMD INSTALL --build flowdurr_0.1.tar.gz
+
+## R again
+
+install.packages("C:\\Users\\Michael\\Dropbox\\SFPUC\\volume duration frequency\\CODE\\flowdurr_0.1.zip", repos=NULL)
