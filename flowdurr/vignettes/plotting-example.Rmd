@@ -1,0 +1,102 @@
+%\VignetteEngine{knitr::knitr}
+%\VignetteIndexEntry{plotting-example}
+
+Modifying plot output with ggplot2---yet another vignette for the flowdurr package
+----------------------------------------------------------------------------------
+>Michael C. Koohafkan   
+San Francisco Public Utilities Commission   
+Hydrology and Water Systems Modelling   
+`r format(Sys.Date(), "%A, %B %d, %Y")` 
+
+```{r setup, include=FALSE}
+require(knitr)
+opts_chunk$set(error=FALSE, tidy=TRUE, dpi=100, results='markup', warning=FALSE, message=FALSE)
+```
+
+The `flowdurr` package provides specialized plots for visualizing flow duration data. The package relies on the popular `ggplot2` package, which provides considerable flexibility for changing plot aesthetics such as colors, labels, and grid lines. Because all plotting functions in `flowdurr` return `ggplot` objects, users can directly modify the plots to optimize readability for presentations, papers or handouts.
+
+We will use the `hspftraces` dataset provided by `flowdurr` to illustrate user modification of plot outputs. We begin by loading and cleaning the data as usual.
+
+```{r import-data}
+require(flowdurr)
+data(hspftraces)
+# reformat to water year
+hspf.wyear = split_by_wateryear(hspftraces)
+hspf.clean = clean_flowdata(hspf.wyear, -1, NA)
+hspf.clean = clean_flowdata(hspf.clean, 0, 1e-5)
+hspf.clean = strip_na_cols(hspf.clean)
+```
+
+We will work with two plots in this example: a boxplot of the one- and three-day monthly maximum flows, and a spaghetti plot of daily flows.
+```{r make-plots, fig.show='hold', echo=c(1:2)}
+spaghetti = plot_all_traces(hspf.clean)
+box = plot_boxcounts(hspf.clean, flowdurations=c(1,3))
+spaghetti
+box
+```
+Let's say we want to use the above plots in a presentation. We will start with the boxplot. In order to improve readability we must
+1. Modify the y-axis title
+2. increase the text size
+3. Change the major and minor grid lines
+4. Add annotations
+We can do this by simply adding `ggplot2` aesthetics to the plot.
+
+We will start with the spaghetti plot. 
+```{r spaghetti-mod1, echo=1:4}
+require(ggplot2)
+mod.textsize = theme(text=element_text(size=20), axis.text.x=element_text(size=rel(1))) 
+mod.yticks = scale_y_continuous('Daily flow (cfs)', minor_breaks=seq(0,600,10), breaks=seq(0,600,100))
+spaghettimod = spaghetti + mod.textsize + mod.yticks
+spaghettimod
+```
+
+We also need to modify the legend to indicate the timespan and total number of traces.
+```{r spaghetti-mod2, echo=1:4}
+traces = as.numeric(substr(names(hspf.clean)[3:ncol(hspf.clean)], 3, 6))
+tlbl = paste(min(traces), '-', max(traces), ' (', length(traces), ' traces)', sep='')
+mod.legend = scale_color_manual('', labels=c(tlbl, 'mean', 'median'), 
+                                values=c('black', 'red', 'blue'))
+spaghettimod = spaghettimod + mod.legend + theme(legend.position='top')
+spaghettimod
+```
+
+We can easily save high-quality graphics using `ggsave`.
+```{r save-plot, eval=FALSE}
+ggsave('spaghettiplot.pdf', plot=spaghettimod, width=9, height=6.5)
+```
+
+The boxplot requires similar modifications, but requires special treatment to accommodate the log scale on the y-axis.
+```{r box-mod1, tidy=FALSE, echo=1:8}
+mod.yticks = scale_y_continuous('annual maximum 1-day, 3-day flow (cfs)',
+               limits=c(1, 600), breaks = c(1, 5, 10, 50, 100, 500),
+               minor_breaks=c(seq(0.01,0.09,0.01), seq(0.1,0.9,0.1), 
+			   seq(1,9,1), seq(10,90,10), seq(100,600,100))) 
+mod.legend = scale_fill_brewer('', palette='Set1', 
+               labels=c("max 1-day flow", "max 3-day flow"))
+boxmod = box + mod.yticks + mod.legend + mod.textsize + 
+         theme(legend.position='top') + coord_trans(y="log10")
+boxmod
+```
+
+There is nothing stopping us from fundamentally changing these plots.
+```{r restructure-plot}
+# check out the structure of a ggplot
+names(boxmod)
+boxmod$mapping
+boxmod$layers
+# you can replace layers directly
+class(boxmod$layers[[1]])
+# change to a jitter plot
+boxmod$layers[[1]] = NULL
+boxmod + geom_jitter(pch=21)
+# but changing aesthetics will reset the legend and color scale
+boxmod$mapping[[3]] = NULL
+boxmod + geom_jitter(aes(color=flow.duration))
+```
+
+It may be easier to just pull the raw data and make a new plot.
+```{r remake-plot}
+plotdata = boxmod$data
+summary(plotdata)
+ggplot(plotdata, aes(x=max.flow, fill=flow.duration)) + geom_histogram(position ="dodge") + facet_wrap(~month, scale="free")
+```

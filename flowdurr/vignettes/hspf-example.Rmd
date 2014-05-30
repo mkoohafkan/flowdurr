@@ -1,0 +1,124 @@
+%\VignetteEngine{knitr::knitr}
+%\VignetteIndexEntry{HSPF-example}
+
+Analyzing HSPF simulation output---Another vignette for the flowdurr package for R
+----------------------------------------------------------------------------------
+>Michael C. Koohafkan   
+San Francisco Public Utilities Commission   
+Hydrology and Water Systems Modelling   
+`r format(Sys.Date(), "%A, %B %d, %Y")`   
+
+```{r setup, include=FALSE}
+require(knitr)
+opts_chunk$set(error=FALSE, tidy=TRUE, dpi=100)
+```
+
+Generating flow duration curves
+-------------------------------
+
+We first import the HSPF data. Sample output from a recent HSPF simulation is included in the package. We first load the data, and then reformat and clean up the data. Finally, we produce a spaghetti plot of the traces.
+```{r import-data, warning=FALSE, message=FALSE, results='markup'}
+require(flowdurr)
+# get the data
+data(hspftraces)  # could also use get_hspf("path/to/file.csv")
+# reformat to water year
+hspf.wyear = split_by_wateryear(hspftraces)
+head(hspf.wyear[1:10])
+# clean the data and plot
+hspf.clean = clean_flowdata(hspf.wyear, -1, NA)
+hspf.clean = clean_flowdata(hspf.wyear, 0, 1e-5)
+plot_all_traces(hspf.clean)
+```
+
+We can do the same for the 3-day flow by calculating the 3-day average
+timeseries.
+```{r avg-flow, warning=FALSE, results='markup'}
+hspf.3df = get_flowavg(hspf.clean, 3)
+plot_all_traces(hspf.3df)
+```
+
+We can also visualize the trace data using boxplots and violin plots.
+```{r boxplots, message=FALSE, warning=FALSE, results='markup'}
+plot_boxcounts(hspf.clean, flowdurations=c(1,3))
+# because these are ggplots, we can add our own aesthetics. Additional aguments
+# to geom_boxplot or geom_violin can be passed as well. 
+require(ggplot2)
+plot_boxcounts(hspf.clean, flowdurations=c(1,3), notch=TRUE) + facet_wrap(~flow.duration)
+plot_boxcounts(hspf.clean, flowdurations=1, violin=TRUE, scale='count')
+```
+
+We can also plot exceedance counts.
+```{r plot-exc, message=FALSE, warning=FALSE, results='markup'}
+plot_countexc(hspf.clean, c(150,250,400))
+```
+
+Next we compute the peak flow durations.
+```{r flow-duration, warning=FALSE, message=FALSE, results='markup'}
+hspf.fd = get_peakavg(hspf.clean)
+head(hspf.fd)
+```
+
+We can visualize the flow durations using histograms or density curves.
+```{r plot-fd, warning=FALSE, message=FALSE, results='markup'}
+# type ?plot_peakflows to see all plotting options
+plot_peakflows(hspf.fd, logscale=TRUE, facet=FALSE)
+plot_peakflows(hspf.fd, logscale=TRUE, count=FALSE)
+```
+
+We can also calculate the Cunnane plotting positions and plot the empirical cdf.
+```{r plotting-positions, message=FALSE, warning=FALSE, results='markup'}
+hspf.pp = get_ppositions(hspf.fd)
+plot_curves(hspf.fd, hspf.pp, logscale=TRUE)
+```
+
+We use the method of L-moments to fit a log Pearson III distribution to the data. For cases where the L-moment estimate is poor, an additional function is provided to refine the parameter estimates using a genetic algorithm.
+```{r fittings, warning=FALSE, message=FALSE, results='markup', fig.show='hold', eval=c(1:3,5:9,12)}
+# see flowdurr::dlp3 for distribution definition 
+hspf.lp3 = get_parameters(hspf.fd, distr='lp3')
+## Not run:
+hspf.lp3.ref = refine_parameters(hspf.fd, hspf.lp3, distr='lp3')
+## End(Not run)
+hspf.fit = get_excurves(hspf.lp3, 'lp3')
+hspf.fit[seq(from=1, to=nrow(hspf.fit), length.out=10),]
+plot_curves(hspf.fd, hspf.pp, hspf.fit, 'HSPF flow durations (LP3)', logscale=TRUE)
+## Not run:
+hspf.fit.ref = get_excurves(hspf.lp3.ref, 'lp3')
+plot_curves(hspf.fd, hspf.pp, hspf.fit.ref, 'HSPF flow durations (LP3)', logscale=TRUE)
+## End(Not run)
+```
+
+High flow exceedance probabilities
+----------------------------------
+
+We return to HSPF traces. Moderately-high flows appear in the 225-375 cfs range:
+```{r high-flows, warning=FALSE, results='markup'}
+plot_all_traces(hspf.clean) + geom_hline(y=c(225, 375), color='orange')
+```
+
+The exceedance probabilities of these flows can be predicted using the 1-day
+flow duration curve.
+```{r exceedance, warning=FALSE, results='markup'}
+# pull high flows from data
+flowcols = names(hspf.clean)[names(hspf.clean) != 'GMT' & 
+                             names(hspf.clean) != 'WYD']
+hspf.highflows = as.matrix(hspf.clean[flowcols])
+hspf.highflows = hspf.highflows[!(hspf.highflows < 225 | hspf.highflows > 375)]
+#remove NA values
+hspf.highflows = hspf.highflows[!is.na(hspf.highflows)]
+# restructure to match hspf.fd format
+hspf.highflows = as.data.frame(hspf.highflows)
+names(hspf.highflows) = '1.day.flow'
+hspf.highflows['p.exceedance'] = predict_exceedance(hspf.highflows, hspf.lp3, distr='lp3')[['1.day.flow']]
+hspf.highflows
+```
+
+Extreme flows ( > 375 cfs) are analyzed similarly.
+```{r extreme-flows, warning=FALSE, results='markup'}
+hspf.extremeflows = as.matrix(hspf.clean[flowcols])
+hspf.extremeflows = hspf.extremeflows[!(hspf.extremeflows < 375)]
+hspf.extremeflows = hspf.extremeflows[!is.na(hspf.extremeflows)]
+hspf.extremeflows = as.data.frame(hspf.extremeflows)
+names(hspf.extremeflows) = '1.day.flow'
+hspf.extremeflows['p.exceedance'] = predict_exceedance(hspf.extremeflows, hspf.lp3, distr='lp3')[['1.day.flow']]
+hspf.extremeflows
+```

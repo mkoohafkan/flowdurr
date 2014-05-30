@@ -1,0 +1,28 @@
+import(ggplot2)
+importFrom(reshape2,melt)
+import(lmomco)
+import(waterData)
+
+# helper functions
+export(to_wateryear, strip_na_cols, clean_flowdata)
+
+# trace functions
+export(get_forecast, subset_forecast)
+export(get_waterdata, get_hspf, subset_waterdata)
+export(split_by_calendaryear, split_by_wateryear)
+export(get_flowavg)
+export(plot_all_traces, plot_trace)
+export(plot_boxcounts, plot_countexc)
+
+# flow duration
+export(get_peakavg)
+export(get_ppositions)
+export(plot_peakflows)
+
+# distribution fitting
+export(dlp3, plp3, qlp3)
+export(dln3, pln3, qln3)
+export(get_parameters, refine_parameters)
+export(get_excurves)
+export(predict_exceedance)
+export(plot_curves, plot_parameters)

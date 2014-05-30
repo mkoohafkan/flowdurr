@@ -1,0 +1,197 @@
+%\VignetteEngine{knitr::knitr}
+%\VignetteIndexEntry{Vignette}
+
+Vignette for flowdurr---An R Package for retrieval, analysis, and visualization of hydrologic time series data
+--------------------------------------------------------------------------------------------------------------
+```{r setup, include=FALSE}
+require(knitr)
+opts_chunk$set(error=FALSE, tidy=TRUE, dpi=100)
+```
+>Michael C. Koohafkan   
+San Francisco Public Utilities Commission   
+Hydrology and Water Systems Modelling   
+`r format(Sys.Date(), "%A, %B %d, %Y")`   
+
+
+Introduction
+------------
+The flowdurr package for R created while the author was an intern working with the San Francisco Public Utilities Commission. The package was developed for the Hydrology and Water Systems Modelling to facilitate working with U.S. Geological Survey (USGS) daily streamflow data and ESP traces created by the California-Nevada River Forecast Center (CNRFC), as well ad HSPF simulation outputs. The package allows users to import USGS daily hydrologic time series data into R and download ESP trace data from the CNRFC website; calculate flow duration curves and visualize hydrologic data; and perform fitting of 3-parameter lognormal and log Pearson type III distributions to data. A helpervfunction is also provided to load HSPF simulation data from a CSV file. This vignette provides an overview of the data acquisition functions and explains the data format used in the package workflow.
+
+Downloading ESP trace data
+--------------------------
+A major feature of this package is the direct import of ESP trace data from the California-Nevada River Forecast Center, <http://www.cnrfc.noaa.gov/ahps.php>. CNRFC trace data is hosted as zip files accessible over html. The example below specifies how to download the most recent trace data:
+```{r download-esp, message=FALSE}
+# load flowdurr package, assuming it has already been installed on the system
+require(flowdurr)
+tracedata <- get_forecast()
+head(tracedata[1:6])
+```
+The data is organized such that columns represent individual traces, as defined by a location code and a model year (see <cnrfc.noaa.gov> for more information). Two important changes are made to the downloaded data. First, flows are converted from thousands of cfsd to cfsd. Second, a "water year day" column is added. 
+
+The initial download contains traces for a large number of locations. Before further analysis can be done, the data must be subset to include only one location. The example below shows how to subset the downloaded data by location and by start and end dates:
+```{r esp-subset}
+# get next six months of data
+sdate = Sys.Date() ; edate = sdate + 183
+arroyohondo.esp = subset_forecast(tracedata, sc='GMT', startdate=sdate, enddate=edate, location='AHOC1')
+# see the first 6 rows of the subsetted data
+head(arroyohondo.esp[1:6])
+```
+The data can also be subset using water year days by setting `sc="WYD"` and using numeric WYD values:
+```{r esp-subset-wyd}
+swyd = to_wateryear(sdate) ; ewyd = to_wateryear(edate)
+arroyohondo.esp = subset_forecast(tracedata, sc='WYD', startdate=swyd, enddate=ewyd, location='AHOC1')
+```
+which gives the same results as the previous example.
+
+Importing USGS streamflow data
+------------------------------
+A few functions are provided to import of USGS daily streamflow data from the USGS Daily Values Site Web Service, <http://waterservices.usgs.gov/rest/DV-Service.html>. The waterData package is used to import data. To import, a USGS identification number that uniquely identifies a streamgage site is needed. This package defaults to the Arroyo Hondo station (station id 11173200) although any valid location id can be used. For more information on available USGS data, see the `waterData` package documentation. The example below specifies how to download the full available record for Arroyo Hondo:
+```{r download-usgs, message=FALSE}
+# default values
+arroyohondo.usgs = get_waterdata(startdate=NULL, enddate=NULL, locid='11173200')
+head(arroyohondo.usgs)
+```
+Note that if `startdate` and `enddate` are `NULL` (the default) the function will download the full set of available data.
+
+The USGS data must additionally be formatted to match the structure of the downloaded ESP trace data. Methods are provided to split the USGS data by calendar year or by water year:
+```{r split-waterdata}
+arroyohondo.wyear = split_by_wateryear(arroyohondo.usgs)
+# WYD column is set to NA if data is split by calendar year
+arroyohondo.cyear = split_by_calendaryear(arroyohondo.usgs)
+# note how the column names differ from the output of get_forecast
+names(arroyohondo.wyear)[1:6]
+names(arroyohondo.cyear)[1:6]
+```
+Columns correspond to the year of record. Note that the USGS data will often be populated with a few NA values in at least the first and last columns depending on the original start and end dates supplied to `get_waterdata()` and the presence of any data gaps. Be aware that splitting the data by calendar year precludes the use of water-year day for subsetting the data (described next). Therefore it is generally recommended that you split the data by water year unless you are working with an interval that spans 9/30.
+
+The USGS flow data can be further subset to span a portion of each year. If the interval spans September 30th, the flowdata must be split by calendar year and the interval is specified with as a character month and day of form `MM-DD`. If the interval includes January 1st, the flowdata must be split by water year and the interval can be specified with either a month-day string or using a 3-digit water year day. The following example shows how to subset the USGS data using either standard dates or water year days:
+```{r subset-usgs, tidy=FALSE,error=TRUE}
+# select next 6 months of data
+s = as.Date('2014-01-01')
+sday = format(s, "%m-%d") ; eday = format(s + 183, "%m-%d")
+# subsetting by normal date
+arroyohondo.6m = subset_waterdata(arroyohondo.wyear, sc='GMT', startdate=sday, enddate=eday)
+# you can get the same result subsetting with normal dates
+sday = to_wateryear(s) %% 1000 ; eday = sday + 183
+arroyohondo.6m = subset_waterdata(arroyohondo.wyear, sc='WYD', startdate=sday, enddate=eday)
+summary(arroyohondo.6m[1:6])
+# in order to get an interval spanning 9/30 the data must be split by calendar year.
+# this will produce an error
+subset_waterdata(arroyohondo.wyear, sc='GMT', startdate='09-25', enddate='10-05')
+# but this won't
+head(subset_waterdata(arroyohondo.cyear, sc='GMT', startdate='09-25', enddate='10-05')[1:6])
+# similarly, in order to get an interval spanning 12/31 the data must be split by water year
+subset_waterdata(arroyohondo.cyear, sc='GMT', startdate='12-25', enddate='01-05') # produces error
+head(subset_waterdata(arroyohondo.wyear, sc='GMT', startdate='12-25', enddate='01-05')[1:6]) # no error
+```
+
+Importing HSPF data
+-------------------
+Rudimentary functionality is provided to import HSPF data stored in comma separated value (CSV) format. The specific format is detailed in the `get_hspf()` function documentation. The output of the function is structured to match the output of `get_waterdata()` so that it can be used with other functions in `flowdurr` package. The following example shows how to import HSPF data from a CSV file:
+```{r import-hspf, eval=c(1:2, 8), tidy=FALSE}
+# function is just a simple wrapper for read.csv
+## Not run:
+?get_hspf
+hspfdata = get_hspf("path/to/HSPFOutput.csv")
+# data can be used like get_waterdata() output
+hspf.cyear = split_by_calendaryear(hspfdata)
+hspf.wyear = split_by_wateryear(hspfdata)
+## End(Not run)
+```
+
+Data cleanup
+------------
+A function is provided for cleaning data, i.e. replacing negative, zero or NA flows with a user-specified value. For instance:
+```{r clean-1}
+arroyohondo.clean = clean_flowdata(arroyohondo.wyear, -1, NA)
+```
+replaces negative flow values with NA; and:
+```{r clean-2}
+arroyohondo.clean = clean_flowdata(arroyohondo.clean, 0, 0.001)
+```
+replaces zero-flow entries with the value 0.001. Passing NA to second argument allows replacement of NA values. Missing ESP trace data is specified as negative values, which can be replaced with NA values as shown above. Missing values in the USGS data are usually specified as NA. In some cases, entire traces may be missing. An additional function is provided to identify and remove columns that contain only NA values:
+```{r no-missing}
+arroyohondo.nomissing = strip_na_cols(arroyohondo.clean)
+head(arroyohondo.nomissing[1:6])
+```
+
+Generating peak flow duration data and calculating plotting positions
+---------------------------------------------------------------------
+The package provides functionality of n-day average flow timeseries. The example below shows how to generate the 3-day average flow timeseries:
+```{r flow-duration}
+arroyohondo.3df = get_flowavg(arroyohondo.nomissing, 3)
+head(arroyohondo.3df[1:6])
+```
+Note that this does not change the format of the data; however, the number of rows is reduced because the moving average introduces NA values in top and bottom rows of the dataset. These NA rows are automatically removed by `get_flowavg()`. For more information on the moving window average, see the `stats::filter` function documentation.
+
+A function is provided to determine the peak flow for each trace associated with a specified flow duration. A moving window average is computed on each trace using `filter()`, and the maximum flow data is returned. By default flow durations of 1, 3, 7, 15, 30, 60, 90, 120, and 183 days are used, but the user can provide an arbitrary list of flow durations. By default NA values are removed prior to computing the peak flow values. If a specified flow duration exceeds the length of a given trace, a value of NA will be returned for the trace. The following example shows how to generate peak flow data for 30, 60 and 90-day durations:
+```{r peak-flows}
+# calculate peak flow durations
+peakflows = get_peakavg(arroyohondo.nomissing, flowduration=c(7, 15, 30,60,90))
+head(peakflows)
+```
+Note that the columns are flow durations and the rows are individual traces. Each element in the data frame is the maximum flow associated with a given trace and flow duration.
+
+A function is provided to compute the Cunnane plotting positions of flows associated with each flow duration. The function uses a default value of 0.4 for the Cunnane shape parameter, but a user-specified value is also accepted. The following example shows how to calculate the plotting positions of each flow value:
+```{r plotting-positions}
+# calculate peak flow durations
+ppos = get_ppositions(peakflows, alpha=0.4)
+head(ppos)
+```
+The plotting position is reported as an exceedance probability. Note that the plotting position data is structured to match the shape of the peak flow data; that is, `ppos[1,1]` is the plotting position of the flow in `peakflows[1,1]`. the empirical cdf for the first flow duration is therefore defined by the first columns of peakflows and ppos:
+```{r ecdf}
+ppcdf = data.frame(flow=sort(peakflows[[1]]), pp=rev(sort(ppos[[1]])))
+names(ppcdf)[1] = names(peakflows)[1]
+head(ppcdf)
+```
+
+Fitting probability distributions to peak flow duration data
+------------------------------------------------------------
+The primary purpose of this package is to fit probability distributions to the peak flow data in order to generate exceedance curves. Functionality is provided to fit either log Pearson type III ("lp3") or 3-parameter lognormal ("ln3") distributions. The parameters of the fitted distribution are computed using the method of L-moments. The following example shows how to fit a log Pearson type III distribution to the flow duration data:
+```{r lmom-parameters}
+# estimate parameters assuming a lognormal distribution
+lp3estims = get_parameters(peakflows, distr='lp3')
+lp3estims
+# assuming a 3-parameter lognormal distribution
+ln3estims = get_parameters(peakflows, distr='ln3')
+ln3estims
+```
+The parameter data is organized such that columns correspond to flow durations while rows correspond to the distribution parameters. Note that the 3-parameter lognormal distribution is automatically bounded at zero. For more information on the distribution definitions, see the `lmomco` package documentation and the functions `qlp3` (`qln3`), `dlp3` (`dln3`), and `plp3` (`pln3`).
+
+The L-moment estimates can be refined using an additional function that uses the Maximum Likelihood algorithm provided by the `fitdistrplus` package. Because the built-in optimization algorithm is unable to cope with the discontinuous parameter space of the log Pearson III distribution, a custom optimization function based on the genetic algorithm provided by the `rgenoud` package is used. The algorithm is effective for identifying global optima but requires significant computation time. The following example shows how to refine the parameter estimates:
+```{r refine-params, eval=c(1:2, 4), tidy=FALSE}
+# this function can take a long time to complete  
+## Not run:
+lp3params = refine_parameters(peakflows, lp3estims, distr='lp3', fix.skew=NULL)
+## End(Not Run)
+```
+Note that the skew parameter of a log Pearson 3 distribution can be fixed in the MLE algorithm if it is preferable to e.g. use the regional skew coefficient. The argument is ignored if the 3-parameter lognormal distribution is specified.
+
+The theoretical exceedance curves can be generated once acceptable parameter values have been found. By default, probabilities ranging from 0.002 to 0.99 are computed. The following example shows how to generate a table of flow exceedance probabilities:
+```{r exeedance-tables, eval=c(1:5, 7), tidy=FALSE}
+# generate the exceedance curves. Note that the distribution must be specified through the argument `distr`
+exceedance.lp3 = get_excurves(lp3estims, distr='lp3', probs=c(seq(0.002, 0.019, 0.001), seq(0.02, 0.99, 0.01)))
+exceedance.lp3[seq(from=1, to=nrow(exceedance.lp3), length.out=10),]
+# we can also pass the refined estimates
+## Not run:
+exceedance.lp3.ref = get_excurves(lp3params, distr='lp3')
+## End(Not run)
+```
+The output is structured so that the first column contains the exceedance probabilities and the remaining columns are flow durations.
+
+Data visualization
+------------------
+Once the distribution has been fitted, the exceedance curves can be generated. The empirical data can be plotted with the fitted curve for comparison. Flows are converted to volumes prior to plotting, in units of either cubic feet or acre-feet as specified through the `units` argument. The plot title is specified through the `distr` argument. The final example shows how plot the empirical and theoretical exceedance curves:
+```{r ex-curve, eval=c(1:4,9), tidy=FALSE}
+# plot the exceedence curves and empirical data
+plot_curves(peakflows, ppos, exceedance.lp3, distr='log Pearson III', units='af')
+# we can also plot the curves without the empirical data, or visa-versa
+## Not run:
+plot_curves(curvedata=exceedance.lp3, distr='log Pearson III', units='af')
+plot_curves(peakflows, ppos, distr='log Pearson III', units='af')
+# see plotting demo for more visualization options
+demo(plotting)
+## End(Not run)
+```
+
+

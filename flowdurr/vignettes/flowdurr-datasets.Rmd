@@ -1,0 +1,55 @@
+%\VignetteEngine{knitr::knitr}
+%\VignetteIndexEntry{flowdurr-datasets}
+
+Vignette for flowdurr datasets---Sample traces from CNRFC, USGS and HSPF
+------------------------------------------------------------------------
+```{r setup, include=FALSE}
+require(knitr)
+opts_chunk$set(error=FALSE, tidy=TRUE, dpi=100)
+require(flowdurr)
+```
+>Michael C. Koohafkan   
+San Francisco Public Utilities Commission   
+Hydrology and Water Systems Modelling   
+`r format(Sys.Date(), "%A, %B %d, %Y")`   
+
+Datasets in the flowdurr package
+--------------------------------
+
+This vignette documents the four datasets included in package `flowdurr`.
+
+### esptraces
+The `esptraces` dataset is a sample set of ESP traces downloaded from <cnrfc.noaa.gov>. The dataset was produced by calling `get_forecast()`. This dataset is updated automatically each package build.
+```{r eval=c(2:4)}
+esptraces = get_forecast()
+data(esptraces)
+names(esptraces)
+head(esptraces[1:6])
+```
+
+### usgstraces
+The `usgstraces` dataset is a sample set of USGS traces downloaded by `flowdurr` via the `waterData` package for R. The dataset was produced by calling `get_waterdata()`. This dataset is updated automatically each package build.
+```{r eval=c(2:4)}
+usgstraces = get_waterdata()
+data(usgstraces)
+names(usgstraces)
+head(usgstraces)
+```
+
+### hspftraces
+The `hspftraces` dataset is a sample set of HSPF simulation output provided to the package author in CSV format. This dataset was produced by calling `get_hspf("path/to/file.csv")`. This dataset was last updated on 5/19/2014.
+```{r eval=c(2:4)}
+hspftraces = get_hspf("path/to/file.csv")
+data(hspftraces)
+names(hspftraces)
+head(hspftraces)
+```
+
+### workedexample
+The `workedexample` dataset contains the variables produced in the `workedexample` demo.
+```{r echo=c(2:4), eval=c(1,3:4)}
+rm(list=ls())
+demo(workedexample)
+data(workedexample)
+ls()
+```
