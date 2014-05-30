@@ -34,6 +34,7 @@ box = plot_boxcounts(hspf.clean, flowdurations=c(1,3))
 spaghetti
 box
 ```
+
 Let's say we want to use the above plots in a presentation. We will start with the boxplot. In order to improve readability we must
 1. Modify the y-axis title
 2. increase the text size
@@ -41,17 +42,14 @@ Let's say we want to use the above plots in a presentation. We will start with t
 4. Add annotations
 We can do this by simply adding `ggplot2` aesthetics to the plot.
 
-We will start with the spaghetti plot. 
-```{r spaghetti-mod1, echo=1:4}
+We will start with the spaghetti plot.
+```{r spaghetti-mod, echo=c(1:11)}
+# modify text size and grid lines
 require(ggplot2)
 mod.textsize = theme(text=element_text(size=20), axis.text.x=element_text(size=rel(1))) 
 mod.yticks = scale_y_continuous('Daily flow (cfs)', minor_breaks=seq(0,600,10), breaks=seq(0,600,100))
 spaghettimod = spaghetti + mod.textsize + mod.yticks
-spaghettimod
-```
-
-We also need to modify the legend to indicate the timespan and total number of traces.
-```{r spaghetti-mod2, echo=1:4}
+# also modify the legend to indicate the timespan and total number of traces.
 traces = as.numeric(substr(names(hspf.clean)[3:ncol(hspf.clean)], 3, 6))
 tlbl = paste(min(traces), '-', max(traces), ' (', length(traces), ' traces)', sep='')
 mod.legend = scale_color_manual('', labels=c(tlbl, 'mean', 'median'), 
@@ -85,18 +83,20 @@ names(boxmod)
 boxmod$mapping
 boxmod$layers
 # you can replace layers directly
-class(boxmod$layers[[1]])
+class(boxmod$layers)
 # change to a jitter plot
 boxmod$layers[[1]] = NULL
 boxmod + geom_jitter(pch=21)
-# but changing aesthetics will reset the legend and color scale
+# but changing aesthetics can reset the legend and color scale
 boxmod$mapping[[3]] = NULL
 boxmod + geom_jitter(aes(color=flow.duration))
 ```
 
-It may be easier to just pull the raw data and make a new plot.
+It may be easier to just pull the raw data and make a new plot, rather than modifying existing plots.
 ```{r remake-plot}
-plotdata = boxmod$data
+plotdata = box$data
+# note the plot data structure is not the same as the input data
+identical(plotdata, hspf.clean)
 summary(plotdata)
 ggplot(plotdata, aes(x=max.flow, fill=flow.duration)) + geom_histogram(position ="dodge") + facet_wrap(~month, scale="free")
 ```
