@@ -4,7 +4,7 @@ Title: Functions for calculating exceedence curves using CNRFC ESP traces and US
 Version: 0.5
 Date: 2014-05-12
 Author: Michael Koohafkan
-Maintainer: Michael Koohafkan <mkoohafkan@sfwater.org>
+Maintainer: Michael Koohafkan <michael.koohafkan@gmail.com>
 Depends: R (>= 3.1.0), waterData
 Imports: zoo, fitdistrplus, rgenoud, scales, ggplot2, reshape2, lmomco
 Suggests: knitr
